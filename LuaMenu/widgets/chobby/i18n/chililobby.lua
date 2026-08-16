@@ -131,6 +131,7 @@ return {
 		more = "More",
 		delete_replay = "Delete",
 		delete_replay_confirm = "Are you sure you want to delete this replay?",
+		replay_searchbar_hint = "Search for map, player or game",
 		delete_confirm = "Are you sure you want to delete this saved game?",
 		load_confirm = "Loading will lose any unsaved progress. Are you sure?",
 		replay_not_found = "Replay file not found, refresh the list!",
@@ -486,6 +487,7 @@ return {
 		more = "Mehr",
 		delete_replay = "Löschen",
 		delete_replay_confirm = "Dieses Replay geht verloren. Trotzdem löschen?",
+		replay_searchbar_hint = "Suche nach Karte, Spieler oder Spielversion",
 		replay_not_found = "Replay Datei nicht gefunden, die Liste neu laden!",
 		replay_different_version = "Dieses Replay erfordert eine andere Engine-Version (wird bei Bedarf automatisch heruntergeladen)",
 		--

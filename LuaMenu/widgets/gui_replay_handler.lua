@@ -19,6 +19,7 @@ end
 
 local replayListWindow
 local replayList
+local replayFilterQuery = ""
 
 -- Size constants for the replay window
 local PLAYER_HEIGHT = 20
@@ -29,6 +30,14 @@ local REPLAY_LIST_ENTRY_HEIGHT = 126
 
 local function ternary(condition, T, F)
   if condition then return T else return F end
+end
+
+local function ReplayInFilter(sortData)
+	return StringUtilities.MatchesSearchQuery(
+		replayFilterQuery,
+		(sortData and sortData[4]) or {},
+		sortData and sortData[3]
+	)
 end
 
 -- Returns whether the players structure of the replay request corresponds
@@ -434,6 +443,12 @@ local function CreateReplayEntry(
 
 	replayPanel.teams = teams
 
+	local searchableValues = {replayPath, replayDateString, mapName}
+	for _, player in pairs(players) do
+		if player.name then
+			searchableValues[#searchableValues + 1] = player.name
+		end
+	end
 	userList.tooltip = WG.Chobby.Configuration.REPLAY_TOOLTIP_PREFIX .. replayPath
 	userList.greedyHitTest = true
 
@@ -506,7 +521,7 @@ local function CreateReplayEntry(
 		parent = replayPanel,
 	}
 
-	return replayPanel, {replayDateString, string.lower(mapName), gameName}
+	return replayPanel, {replayDateString, string.lower(mapName), gameName, searchableValues}
 end
 
 --------------------------------------------------------------------------------
@@ -565,6 +580,10 @@ end
 
 local function InitializeControls(parentControl)
 	local Configuration = WG.Chobby.Configuration
+	local loadAllReplays = false
+	local loadingReplayBatch = false
+	local replayLoadGeneration = 0
+	local PartialAddReplays
 
 	Label:New {
 		x = 15,
@@ -575,6 +594,54 @@ local function InitializeControls(parentControl)
 		objectOverrideFont = WG.Chobby.Configuration:GetFont(3),
 		caption = "Replays",
 	}
+
+	local clearSearchButton
+	local replaySearchBox = EditBox:New {
+		x = 195,
+		y = 11,
+		right = 580,
+		height = 37,
+		hint = i18n("replay_searchbar_hint"),
+		text = "",
+		objectOverrideFont = WG.Chobby.Configuration:GetFont(3),
+		objectOverrideHintFont = WG.Chobby.Configuration:GetFont(11),
+		parent = parentControl,
+		OnTextModified = {
+			function(input)
+				replayFilterQuery = input.text
+				local hasSearch = replayFilterQuery:find("%S") ~= nil
+				if clearSearchButton then
+					clearSearchButton:SetVisibility(hasSearch)
+				end
+				loadAllReplays = hasSearch
+				if replayList then
+					replayList:RecalculateDisplay()
+				end
+				if hasSearch and PartialAddReplays then
+					PartialAddReplays()
+				end
+			end
+		},
+	}
+
+	clearSearchButton = Button:New {
+		right = 535,
+		y = 11,
+		width = 37,
+		height = 37,
+		caption = "x",
+		tooltip = i18n("clear_search"),
+		classname = "button_small",
+		objectOverrideFont = WG.Chobby.Configuration:GetFont(3),
+		parent = parentControl,
+		OnClick = {
+			function()
+				replaySearchBox:Clear()
+				screen0:FocusControl(replaySearchBox)
+			end
+		},
+	}
+	clearSearchButton:Hide()
 
 	local loadingPanel = Panel:New {
 		classname = "overlay_window",
@@ -615,12 +682,16 @@ local function InitializeControls(parentControl)
 	local headings = {}
 
 	replayList = WG.Chobby.SortableList(
-		listHolder, headings, REPLAY_LIST_ENTRY_HEIGHT, nil, false
+		listHolder, headings, REPLAY_LIST_ENTRY_HEIGHT, nil, false, nil, ReplayInFilter
 	)
 
-	local PartialAddReplays, moreButton
+	local moreButton
 
 	local function AddReplays()
+		replayLoadGeneration = replayLoadGeneration + 1
+		local loadGeneration = replayLoadGeneration
+		loadingReplayBatch = false
+		loadAllReplays = replayFilterQuery:find("%S") ~= nil
 		local Configuration = WG.Chobby.Configuration
 		if Configuration.debugMode then
 			Spring.Echo("ReplayHandler: AddReplays called, discovering demo files...")
@@ -656,15 +727,30 @@ local function InitializeControls(parentControl)
 
         --  Add replays to the replays list
 		PartialAddReplays = function()
+			if loadGeneration ~= replayLoadGeneration then
+				return
+			end
+			if loadingReplayBatch then
+				return
+			end
+			loadingReplayBatch = true
 			local remaining = 50
 
 			local function QueueOneReplay()
+				if loadGeneration ~= replayLoadGeneration then
+					return
+				end
 				AddOneReplay()
 				remaining = remaining - 1
-				if remaining > 0 then
+				if remaining > 0 and index >= 1 then
 					WG.Delay(QueueOneReplay, 0.005)
 				else
-					loadingPanel:SetVisibility(false)
+					loadingReplayBatch = false
+					if index >= 1 and loadAllReplays then
+						WG.Delay(PartialAddReplays, 0.005)
+					else
+						loadingPanel:SetVisibility(false)
+					end
 				end
 			end
 
