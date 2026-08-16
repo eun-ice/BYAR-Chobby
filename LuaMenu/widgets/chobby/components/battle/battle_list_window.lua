@@ -727,137 +727,15 @@ function BattleListWindow:AddBattle(battleID, battle)
 	self:RecalculateOrder(battle.battleID) -- when a battle is added to the list, go ahead and ensure it's sorted correctly. Other cases will rely on soft update
 end
 
--- Fuzzy subsequence scorer for battle list search.
--- Returns a positive score if query is a subsequence of target, 0 otherwise.
-local function fuzzyScore(query, target)
-	local qlen = #query
-	local tlen = #target
-	if qlen == 0 then return 0 end
-	if qlen > tlen then return 0 end
-
-	local score = 0
-	local qi = 1
-	local consecutive = 0
-	local lastMatchPos = 0
-
-	for ti = 1, tlen do
-		if qi <= qlen and string.byte(target, ti) == string.byte(query, qi) then
-			if lastMatchPos > 0 then
-				local gap = ti - lastMatchPos - 1
-				if gap > 0 then
-					score = score - gap * 1.0
-					consecutive = 0
-				end
-			end
-
-			score = score + 1
-			consecutive = consecutive + 1
-			if consecutive > 1 then
-				score = score + consecutive
-			end
-
-			if ti > 1 then
-				local prev = string.byte(target, ti - 1)
-				if prev == 32 or prev == 95 or prev == 45 then
-					score = score + 4
-				end
-			elseif ti == 1 then
-				score = score + 5
-			end
-
-			score = score + math.max(0, (20 - ti) * 0.1)
-			lastMatchPos = ti
-			qi = qi + 1
-		else
-			if qi <= qlen then
-				consecutive = 0
-			end
-		end
-	end
-
-	if qi <= qlen then return 0 end
-	score = score + math.max(0, 3 - (tlen - qlen) * 0.1)
-	return score
-end
-
 function BattleListWindow:ItemInFilter(id)
 	local battle = lobby:GetBattle(id)
 	local filterString = Configuration.gameConfig.battleListOnlyShow
 	if filterString ~= nil and filterString ~= "" then
-		local lowerFilter = string.lower(filterString)
-		local queryNoSpaces = lowerFilter:gsub("%s+", "")
-		local queryLen = #queryNoSpaces
-
-		-- Collect all searchable strings for this battle
 		local battleStrings = {battle.title, battle.mapName}
 		for _, user in ipairs(battle.users) do
 			battleStrings[#battleStrings + 1] = user
 		end
-		-- Include gameName/version hash only for queries of 5+ chars
-		local lowerGameName
-		if queryLen >= 5 and battle.gameName then
-			lowerGameName = string.lower(battle.gameName)
-			battleStrings[#battleStrings + 1] = battle.gameName
-		end
-
-		-- Split filter into words for multi-word AND matching
-		local filterWords = {}
-		for word in lowerFilter:gmatch("%S+") do
-			filterWords[#filterWords + 1] = word
-		end
-
-		local matched = false
-		if lowerGameName then
-			if string.find(lowerGameName, queryNoSpaces, 1, true) then
-				matched = true
-			elseif #queryNoSpaces == 40 and string.find(queryNoSpaces, "^[0-9a-f]+$") then
-				-- Battle gameName commonly includes a short commit hash; allow full 40-char hashes via prefix.
-				local shortHash8 = string.sub(queryNoSpaces, 1, 8)
-				local shortHash7 = string.sub(queryNoSpaces, 1, 7)
-				if string.find(lowerGameName, shortHash8, 1, true) or string.find(lowerGameName, shortHash7, 1, true) then
-					matched = true
-				end
-			end
-		end
-
-		-- Tier 1: Single-term exact substring (original behavior, fast path)
-		if not matched and #filterWords <= 1 then
-			for _, battleString in ipairs(battleStrings) do
-				if string.find(string.lower(battleString), lowerFilter, 1, true) then
-					matched = true
-					break
-				end
-			end
-		else
-			-- Tier 1b: Multi-word AND — each word must appear in at least one battle string
-			local combinedLower = ""
-			for _, battleString in ipairs(battleStrings) do
-				combinedLower = combinedLower .. " " .. string.lower(battleString)
-			end
-			local allFound = true
-			for _, word in ipairs(filterWords) do
-				if not string.find(combinedLower, word, 1, true) then
-					allFound = false
-					break
-				end
-			end
-			if allFound then matched = true end
-		end
-
-		-- Tier 2: Fuzzy subsequence match (min 4 chars, name-only)
-		if not matched then
-			if #queryNoSpaces >= 4 then
-				local threshold = #queryNoSpaces * 3
-				for _, battleString in ipairs(battleStrings) do
-					if fuzzyScore(queryNoSpaces, string.lower(battleString)) >= threshold then
-						matched = true
-						break
-					end
-				end
-			end
-		end
-
-		if not matched then
+		if not StringUtilities.MatchesSearchQuery(filterString, battleStrings, battle.gameName) then
 			return false
 		end
 	end
@@ -1968,4 +1846,3 @@ function BattleListWindow:JoinBattle(battle, _, _, joinAsPlayer)
 	end
 	
 end
-
