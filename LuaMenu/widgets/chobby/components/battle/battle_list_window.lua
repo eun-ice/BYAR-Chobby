@@ -32,12 +32,33 @@ function BattleListWindow:init(parent)
 		OnTextModified = {
 			function (input)
 				Configuration.gameConfig.battleListOnlyShow = input.text
+				if self.clearSearchButton then
+					self.clearSearchButton:SetVisibility(input.text:find("%S") ~= nil)
+				end
 				-- when a filter is updated, force an update immediately
 				self:SoftUpdate(true)
 			end
 		}
 	}
 
+	self.clearSearchButton = Button:New {
+		right = 55,
+		y = 11,
+		width = 37,
+		height = 37,
+		caption = "x",
+		tooltip = i18n("clear_search"),
+		classname = "button_small",
+		objectOverrideFont = myFont3,
+		parent = self.window,
+		OnClick = {
+			function()
+				self.searchbar:Clear()
+				screen0:FocusControl(self.searchbar)
+			end
+		},
+	}
+	self.clearSearchButton:Hide()
 
 	if not Configuration.gameConfig.disableBattleListHostButton then
 		self.btnNewBattle = Button:New {
