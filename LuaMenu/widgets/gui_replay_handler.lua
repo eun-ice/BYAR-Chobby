@@ -618,7 +618,7 @@ local function InitializeControls(parentControl)
 					replayList:RecalculateDisplay()
 				end
 				if hasSearch and PartialAddReplays then
-					PartialAddReplays()
+					PartialAddReplays(false)
 				end
 			end
 		},
@@ -685,6 +685,26 @@ local function InitializeControls(parentControl)
 		listHolder, headings, REPLAY_LIST_ENTRY_HEIGHT, nil, false, nil, ReplayInFilter
 	)
 
+	local pendingReplayItems = {}
+	local replayFlushScheduled = false
+	local function FlushReplayItems()
+		replayFlushScheduled = false
+		if #pendingReplayItems == 0 then
+			return
+		end
+		local items = pendingReplayItems
+		pendingReplayItems = {}
+		replayList:AddItems(items)
+	end
+
+	local function QueueReplayItem(replayPath, control, sortData)
+		pendingReplayItems[#pendingReplayItems + 1] = {replayPath, control, sortData}
+		if not replayFlushScheduled then
+			replayFlushScheduled = true
+			WG.Delay(FlushReplayItems, 0.05)
+		end
+	end
+
 	local moreButton
 
 	local function AddReplays()
@@ -726,7 +746,7 @@ local function InitializeControls(parentControl)
 		end
 
         --  Add replays to the replays list
-		PartialAddReplays = function()
+		PartialAddReplays = function(showLoading)
 			if loadGeneration ~= replayLoadGeneration then
 				return
 			end
@@ -746,16 +766,19 @@ local function InitializeControls(parentControl)
 					WG.Delay(QueueOneReplay, 0.005)
 				else
 					loadingReplayBatch = false
+					loadingPanel:SetVisibility(false)
 					if index >= 1 and loadAllReplays then
-						WG.Delay(PartialAddReplays, 0.005)
-					else
-						loadingPanel:SetVisibility(false)
+						WG.Delay(function()
+							PartialAddReplays(false)
+						end, 0.005)
 					end
 				end
-			end
+		end
 
-			loadingPanel:SetVisibility(true)
-			loadingPanel:BringToFront()
+			if showLoading ~= false then
+				loadingPanel:SetVisibility(true)
+				loadingPanel:BringToFront()
+			end
 			QueueOneReplay()
 		end
 
@@ -772,7 +795,7 @@ local function InitializeControls(parentControl)
 		for _ = 1, 9 do
 			AddOneReplay()
 		end
-		PartialAddReplays()
+		PartialAddReplays(true)
 	end
 
 	listHolder:Hide()
@@ -826,7 +849,7 @@ local function InitializeControls(parentControl)
 		OnClick = {
 			function ()
 				if PartialAddReplays then
-					PartialAddReplays()
+					PartialAddReplays(true)
 				end
 			end
 		},
@@ -904,7 +927,7 @@ local function InitializeControls(parentControl)
 				local control, sortData = CreateReplayEntry(replayPath, engine, game, map, players, time, winningAllyTeamIds)
 
 				if control then
-					replayList:AddItem(replayPath, control, sortData)
+					QueueReplayItem(replayPath, control, sortData)
 				end
 			end,
 
